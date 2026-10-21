@@ -1,0 +1,59 @@
+# ==============================================================================
+# Enterprise Azure DevOps Pipeline with AI-Augmented SDLC Governance
+# Stages: Planning -> Coding/Review -> Testing/Diagnostics -> Debugging/RCA -> Deployment/Canary
+# ==============================================================================
+
+name: $(Date:yyyyMMdd)$(Rev:.r)-ai-sdlc-pipeline
+
+trigger:
+  branches:
+    include:
+      - main
+      - master
+      - release/*
+  paths:
+    exclude:
+      - docs/*
+      - README.md
+
+pr:
+  branches:
+    include:
+      - main
+      - master
+
+variables:
+  # Link to Azure DevOps Variable Group containing Azure OpenAI or OpenAI secrets
+  - group: Enterprise-AI-DevOps-Secrets
+  - name: PYTHON_VERSION
+    value: '3.11'
+  - name: ENFORCE_AI_GATES
+    value: 'false'  # Set to 'true' to hard-block PR merges on CRITICAL AI findings
+
+stages:
+  # Stage 1: Planning, Linting, Architecture & SAST Checks
+  - template: .azure-devops/templates/stage-validate.yml
+    parameters:
+      pythonVersion: $(PYTHON_VERSION)
+
+  # Stage 2: Automated Testing, AI Test Analysis & Autonomous RCA on Failure
+  - template: .azure-devops/templates/stage-build-test.yml
+    parameters:
+      pythonVersion: $(PYTHON_VERSION)
+
+  # Stage 3: AI Code Review & Threat Modeling (Executes on Pull Requests)
+  - template: .azure-devops/templates/stage-ai-pr-review.yml
+    parameters:
+      pythonVersion: $(PYTHON_VERSION)
+
+  # Stage 4: Staging Deployment & AI Release Notes
+  - template: .azure-devops/templates/stage-deploy-staging.yml
+    parameters:
+      environmentName: 'Staging'
+      pythonVersion: $(PYTHON_VERSION)
+
+  # Stage 5: Canary Rollout & AI Telemetry Decision Gate (Production)
+  - template: .azure-devops/templates/stage-canary-prod.yml
+    parameters:
+      environmentName: 'Production'
+      pythonVersion: $(PYTHON_VERSION)

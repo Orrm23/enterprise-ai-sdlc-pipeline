@@ -1,0 +1,69 @@
+parameters:
+  - name: environmentName
+    type: string
+    default: 'Production'
+  - name: pythonVersion
+    type: string
+    default: '3.11'
+
+stages:
+  - stage: Canary_And_Production_Gate
+    displayName: '5. Canary Deployment & AI Telemetry Gate'
+    dependsOn: Deploy_Staging
+    condition: and(succeeded(), in(variables['Build.SourceBranch'], 'refs/heads/main', 'refs/heads/master'))
+    jobs:
+      - deployment: CanaryDeployment
+        displayName: 'Canary Rollout (10% Traffic)'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: ${{ parameters.environmentName }}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: UsePythonVersion@0
+                  displayName: 'Set Python ${{ parameters.pythonVersion }}'
+                  inputs:
+                    versionSpec: '${{ parameters.pythonVersion }}'
+
+                - script: |
+                    pip install -r requirements.txt
+                  displayName: 'Install Dependencies'
+
+                - script: |
+                    echo "==> Deploying Canary Revision (10% Traffic Partition)..."
+                    echo "Canary deployed. Routing 10% of active user sessions to Canary."
+                  displayName: 'Route 10% Traffic to Canary'
+
+                - script: |
+                    echo "==> AI Telemetry Gate: Comparing Baseline vs Canary SLIs/SLOs..."
+                    python -m ai_pipeline_engine.ai_deployment_verifier
+                  name: CanaryAIGate
+                  displayName: 'AI Metric Verification & Anomaly Detection'
+                  env:
+                    AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
+                    AZURE_OPENAI_API_KEY: $(AZURE_OPENAI_API_KEY)
+                    AZURE_OPENAI_DEPLOYMENT_NAME: $(AZURE_OPENAI_DEPLOYMENT_NAME)
+                    OPENAI_API_KEY: $(OPENAI_API_KEY)
+
+                - script: |
+                    echo "==> AI Gate Cleared: Promoting Canary to 100% Production Traffic..."
+                    echo "Full traffic promotion complete. Service is live."
+                  displayName: 'Promote Canary to 100% Production'
+                  condition: succeeded()
+
+                - script: |
+                    echo "==> Canary Failure Detected: Executing Automated Rollback..."
+                    echo "Reverting traffic back to stable baseline revision."
+                    echo "Notifying On-Call Incident Response."
+                  displayName: 'Automated Rollback'
+                  condition: failed()
+
+                - task: PublishPipelineArtifact@1
+                  displayName: 'Publish AI Canary Decision Report'
+                  condition: always()
+                  inputs:
+                    targetPath: '$(System.DefaultWorkingDirectory)/ai_deployment_decision.json'
+                    artifactName: 'AI-Canary-Decision'

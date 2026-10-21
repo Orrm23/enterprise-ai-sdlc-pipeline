@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+test-results.xml
+coverage.xml
+*.log
+
+# Generated AI Reports (Keep templates, ignore local runtime outputs)
+ai_test_analysis_report.md
+ai_pr_review_report.md
+ai_root_cause_analysis.md
+ai_deployment_decision.json
+RELEASE_NOTES.md
+
+# Environment variables
+.env
+.env.local

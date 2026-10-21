@@ -1,0 +1,69 @@
+parameters:
+  - name: pythonVersion
+    type: string
+    default: '3.11'
+
+stages:
+  - stage: Build_And_Test
+    displayName: '2. Build, Test & AI Diagnostics'
+    dependsOn: Validate_And_Plan
+    jobs:
+      - job: TestAndAnalyze
+        displayName: 'Automated Testing with AI Failure Analysis'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: UsePythonVersion@0
+            displayName: 'Set Python ${{ parameters.pythonVersion }}'
+            inputs:
+              versionSpec: '${{ parameters.pythonVersion }}'
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r requirements.txt
+            displayName: 'Install Project Dependencies'
+
+          - script: |
+              echo "==> Executing Pytest with JUnit & Coverage Output"
+              pytest --junitxml=test-results.xml --cov=src --cov-report=xml:coverage.xml tests/ 2>&1 | tee build.log
+            displayName: 'Run Pytest Suite'
+            continueOnError: true
+
+          - script: |
+              echo "==> Running AI Test Failure Diagnostics"
+              python -m ai_pipeline_engine.ai_test_analyzer
+            displayName: 'AI Test Failure Analyzer'
+            condition: always()
+
+          - script: |
+              echo "==> Executing Autonomous Root Cause Analysis (RCA)"
+              python -m ai_pipeline_engine.ai_rca_engine
+            displayName: 'AI Autonomous RCA Engine'
+            condition: failed()
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+              AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
+              AZURE_OPENAI_API_KEY: $(AZURE_OPENAI_API_KEY)
+              AZURE_OPENAI_DEPLOYMENT_NAME: $(AZURE_OPENAI_DEPLOYMENT_NAME)
+              OPENAI_API_KEY: $(OPENAI_API_KEY)
+
+          - task: PublishTestResults@2
+            displayName: 'Publish Test Results to Azure DevOps'
+            condition: always()
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: '**/test-*.xml'
+              failTaskOnFailedTests: true
+
+          - task: PublishCodeCoverageResults@2
+            displayName: 'Publish Code Coverage'
+            condition: always()
+            inputs:
+              summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish AI Diagnostic Reports'
+            condition: always()
+            inputs:
+              targetPath: '$(System.DefaultWorkingDirectory)/ai_test_analysis_report.md'
+              artifactName: 'AI-Test-Diagnostics'

@@ -1,0 +1,61 @@
+parameters:
+  - name: environmentName
+    type: string
+    default: 'Staging'
+  - name: pythonVersion
+    type: string
+    default: '3.11'
+
+stages:
+  - stage: Deploy_Staging
+    displayName: '4. Deploy to Staging & AI Release Notes'
+    dependsOn: Build_And_Test
+    condition: and(succeeded(), in(variables['Build.SourceBranch'], 'refs/heads/main', 'refs/heads/master'))
+    jobs:
+      - deployment: DeployStagingJob
+        displayName: 'Staging Deployment & Automated Notes'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: ${{ parameters.environmentName }}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: UsePythonVersion@0
+                  displayName: 'Set Python ${{ parameters.pythonVersion }}'
+                  inputs:
+                    versionSpec: '${{ parameters.pythonVersion }}'
+
+                - script: |
+                    pip install -r requirements.txt
+                  displayName: 'Install Requirements'
+
+                - script: |
+                    echo "==> Synthesizing AI Release Notes and Risk Score"
+                    python -m ai_pipeline_engine.ai_release_notes
+                  displayName: 'Generate AI Release Notes'
+                  env:
+                    AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
+                    AZURE_OPENAI_API_KEY: $(AZURE_OPENAI_API_KEY)
+                    AZURE_OPENAI_DEPLOYMENT_NAME: $(AZURE_OPENAI_DEPLOYMENT_NAME)
+                    OPENAI_API_KEY: $(OPENAI_API_KEY)
+
+                - script: |
+                    echo "==> Simulating Container Build & Deployment to Staging"
+                    echo "Building image order-service:$(Build.BuildId)..."
+                    echo "Deploying to Azure Container Apps / AKS (Staging Cluster)..."
+                    echo "Deployment completed successfully."
+                  displayName: 'Deploy Microservice to Staging'
+
+                - script: |
+                    echo "==> Running Automated Staging Smoke Verification"
+                    python -c "from src.main import app; print('App initialized successfully for staging smoke probe.')"
+                  displayName: 'Post-Deploy Health Probing'
+
+                - task: PublishPipelineArtifact@1
+                  displayName: 'Publish AI Release Notes'
+                  inputs:
+                    targetPath: '$(System.DefaultWorkingDirectory)/RELEASE_NOTES.md'
+                    artifactName: 'AI-Release-Notes'

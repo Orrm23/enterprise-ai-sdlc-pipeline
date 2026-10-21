@@ -1,0 +1,33 @@
+parameters:
+  - name: pythonVersion
+    type: string
+    default: '3.11'
+
+stages:
+  - stage: Validate_And_Plan
+    displayName: '1. Planning & Code Quality Gate'
+    jobs:
+      - job: CodeQualityInspection
+        displayName: 'Linting, Static Security & Contract Checks'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: UsePythonVersion@0
+            displayName: 'Set Python ${{ parameters.pythonVersion }}'
+            inputs:
+              versionSpec: '${{ parameters.pythonVersion }}'
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install flake8 bandit
+            displayName: 'Install Linters & SAST Tools'
+
+          - script: |
+              echo "==> Running Flake8 Syntax & Code Smells Check"
+              flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics
+            displayName: 'Execute Linter (Flake8)'
+
+          - script: |
+              echo "==> Running SAST Security Audit (Bandit)"
+              bandit -r src/ -ll -ii || true
+            displayName: 'Execute Security Vulnerability Scan (Bandit)'

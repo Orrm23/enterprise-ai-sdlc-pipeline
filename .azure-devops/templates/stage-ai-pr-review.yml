@@ -1,0 +1,47 @@
+parameters:
+  - name: pythonVersion
+    type: string
+    default: '3.11'
+
+stages:
+  - stage: AI_PR_Review_And_Governance
+    displayName: '3. AI Code Review & Policy Gate'
+    dependsOn: Build_And_Test
+    condition: and(succeeded(), eq(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - job: AIReviewJob
+        displayName: 'Automated PR Review & Threat Analysis'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: UsePythonVersion@0
+            displayName: 'Set Python ${{ parameters.pythonVersion }}'
+            inputs:
+              versionSpec: '${{ parameters.pythonVersion }}'
+
+          - script: |
+              python -m pip install -r requirements.txt
+            displayName: 'Install Dependencies'
+
+          - script: |
+              echo "==> Running AI PR Reviewer Agent"
+              python -m ai_pipeline_engine.ai_pr_reviewer
+            displayName: 'Execute AI PR Review & Comment Engine'
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+              SYSTEM_COLLECTIONURI: $(System.CollectionUri)
+              SYSTEM_TEAMPROJECT: $(System.TeamProject)
+              BUILD_REPOSITORY_ID: $(Build.Repository.ID)
+              SYSTEM_PULLREQUEST_PULLREQUESTID: $(System.PullRequest.PullRequestId)
+              AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
+              AZURE_OPENAI_API_KEY: $(AZURE_OPENAI_API_KEY)
+              AZURE_OPENAI_DEPLOYMENT_NAME: $(AZURE_OPENAI_DEPLOYMENT_NAME)
+              OPENAI_API_KEY: $(OPENAI_API_KEY)
+              ENFORCE_AI_GATES: $(ENFORCE_AI_GATES)
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish AI PR Review Report'
+            condition: always()
+            inputs:
+              targetPath: '$(System.DefaultWorkingDirectory)/ai_pr_review_report.md'
+              artifactName: 'AI-PR-Review'
