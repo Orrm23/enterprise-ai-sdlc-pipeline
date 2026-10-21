@@ -6,4 +6,5 @@ pytest>=8.1.0
 pytest-cov>=5.0.0
 requests>=2.31.0
 openai>=1.20.0
+tiktoken>=0.7.0
 python-dotenv>=1.0.1

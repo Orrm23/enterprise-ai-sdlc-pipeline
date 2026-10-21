@@ -13,6 +13,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from ai_pipeline_engine.config import AIClientConfig
+from ai_pipeline_engine.context_optimizer import TokenBudgetManager
 
 
 SYSTEM_PROMPT = """You are an automated Site Reliability & Software QA Test Architect.
@@ -81,17 +82,31 @@ def main():
 
     print(f"[AI Test Analyzer] Found {len(all_failures)} failing test cases. Generating AI analysis...")
 
-    # Build prompt context
+    # Group duplicate failure signatures to conserve context tokens
+    grouped_failures: Dict[str, List[Dict[str, Any]]] = {}
+    for f in all_failures:
+        sig = f"{f['message'][:120]}"
+        grouped_failures.setdefault(sig, []).append(f)
+
+    print(
+        f"[AI Test Analyzer] Extracted {len(all_failures)} failed cases across "
+        f"{len(grouped_failures)} unique error signatures."
+    )
+
     failures_summary = []
-    for idx, f in enumerate(all_failures[:5], 1):  # Cap at top 5 to keep context focused
+    for idx, (sig, cases) in enumerate(list(grouped_failures.items())[:5], 1):
+        primary = cases[0]
+        co_occurring = f" (and {len(cases) - 1} identical co-occurring failures)" if len(cases) > 1 else ""
         failures_summary.append(
-            f"Test Case #{idx}: {f['classname']}::{f['name']}\n"
-            f"File: {f['file']}\n"
-            f"Error Message: {f['message']}\n"
-            f"Stack Trace:\n{f['trace'][-800:]}\n"
+            f"Error Group #{idx}{co_occurring}: {primary['classname']}::{primary['name']}\n"
+            f"File: {primary['file']}\n"
+            f"Signature: {primary['message']}\n"
+            f"Stack Trace:\n{primary['trace'][-600:]}\n"
         )
 
-    user_prompt = "Failed Test Cases:\n\n" + "\n---\n".join(failures_summary)
+    user_prompt = "Failed Test Cases (Deduplicated & Token-Budgeted):\n\n" + "\n---\n".join(failures_summary)
+    user_prompt, token_count = TokenBudgetManager.truncate_to_token_limit(user_prompt, max_tokens=2500)
+    print(f"[Token Optimizer] Deduplicated test context token load: {token_count} tokens.")
 
     analysis_output = config.complete_prompt(SYSTEM_PROMPT, user_prompt, max_tokens=1800)
 

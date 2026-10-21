@@ -11,6 +11,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from ai_pipeline_engine.config import AIClientConfig
+from ai_pipeline_engine.context_optimizer import LogCompactor, TokenBudgetManager
 
 
 SYSTEM_PROMPT = """You are a Principal DevOps & Site Reliability Engineer performing Root Cause Analysis (RCA).
@@ -102,6 +103,16 @@ def main():
     config = AIClientConfig()
     context = gather_build_context()
 
+    print("[AI RCA Engine] Compacting build logs with LogCompactor...")
+    log_stats = LogCompactor.compact_log(context["error_logs"], max_token_budget=2000)
+    compact_error_log = log_stats["compact_log"]
+
+    print(
+        f"[Token Optimizer] Raw Log Tokens: {log_stats['raw_tokens']} | "
+        f"Optimized: {log_stats['optimized_tokens']} | "
+        f"Saved: {log_stats['tokens_saved']} ({log_stats['compression_ratio']})"
+    )
+
     user_prompt = f"""Build ID: {config.build_id or 'Local'}
 Branch: {config.branch_name or 'unknown'}
 Commit: {config.commit_hash or 'HEAD'}
@@ -112,8 +123,8 @@ Recent Git Commits:
 Recent Changes / Git Status:
 {context['recent_changes']}
 
-Error Logs / Trace:
-{context['error_logs']}
+Error Logs / Trace (Context-Compressed):
+{compact_error_log}
 """
 
     print("[AI RCA Engine] Synthesizing root cause analysis via LLM...")

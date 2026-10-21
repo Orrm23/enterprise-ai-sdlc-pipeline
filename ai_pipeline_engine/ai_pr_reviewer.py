@@ -9,6 +9,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from ai_pipeline_engine.config import AIClientConfig
+from ai_pipeline_engine.context_optimizer import DiffPruner, TokenBudgetManager
 
 
 SYSTEM_PROMPT = """You are an elite Staff Software Architect & Principal Security Engineer reviewing a Pull Request.
@@ -105,18 +106,23 @@ def main():
         )
         print("[AI PR Reviewer] Notice: Using contextual changeset diff.")
 
-    # Truncate diff if extremely large to prevent context overflow
-    max_diff_len = 20000
-    if len(diff_content) > max_diff_len:
-        diff_content = diff_content[:max_diff_len] + "\n...[Diff truncated for review context]..."
+    print("[AI PR Reviewer] Optimizing changeset diff with Token Context Optimizer...")
+    diff_stats = DiffPruner.optimize_diff(diff_content, max_token_budget=3500)
+    optimized_diff = diff_stats["optimized_diff"]
+
+    print(
+        f"[Token Optimizer] Raw Tokens: {diff_stats['raw_tokens']} | "
+        f"Optimized Tokens: {diff_stats['optimized_tokens']} | "
+        f"Tokens Saved: {diff_stats['tokens_saved']} ({diff_stats['compression_ratio']})"
+    )
 
     user_prompt = f"""Pull Request ID: {config.pr_id or 'Local/CI'}
 Branch: {config.branch_name or 'feature'}
 Commit: {config.commit_hash or 'HEAD'}
 
-Changeset Git Diff:
+Changeset Git Diff (Context-Optimized):
 ```diff
-{diff_content}
+{optimized_diff}
 ```
 """
 
